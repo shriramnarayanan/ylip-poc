@@ -1,0 +1,16 @@
+[project]
+name = "ylip-image-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.0",
+    "diffusers>=0.28",
+    "accelerate>=0.30",
+    "transformers>=4.40",
+    "pillow>=10.0",
+    "fastapi>=0.100",
+    "uvicorn>=0.24",
+]
+
+[tool.uv]
+package = false
