@@ -1,0 +1,14 @@
+[project]
+name = "ylip-e2e"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest",
+    "requests",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+
+[tool.uv]
+package = false

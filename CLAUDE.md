@@ -17,3 +17,17 @@ For hardware, likely choices are m5stack (https://shop.m5stack.com/) or a raspbe
 For software, the front end UI should allow text, camera, and audio inputs. It should be able to render text, images and audio as output. The model will auto-compact periodically (either on a schedule, or depending on usage). However, it should still be able to observe long-term trends in the student, and be able to re-visit areas where it observers the student struggling. The tone of the teacher should be neutral - it should be critical of the student's responses. Encouragement should be reserved for when the student struggles.
 
 Do not use system python. Use python 3.14 in the user's home directory. For all python projects, create a venv and activate it before running any scripts. For projects that use Docker, generate the lockfile this way. Use nvm for Node.JS projects
+
+### RUNNING PYTHON
+Always activate the python venv, and run uv from the user's python installation.
+
+### RUNNING THE FRONTEND
+In the frontend directory after activating the venv, use uv to `run python .\src\main.py`
+
+### END TO END TESTS
+Use the Playwright MCP server to test new features or changes to the UI. Before making code changes, create or update the test cases in the e2e markdown files. Use one use-case per file. These changes should be reviewed and approved by a human. Tests should be comprehensive across models, UI panels, and conversation modes. Examples:
+- In Text mode, user specifies text input "What is a Gaussian Distribution? Plot one", LLM responds with a PLOT directive which renders a graph. There is no MUSIC: and the TTS model translates the LLM response, but does not include the PLOT directive contents.
+- In Text mode, user uploads an image of a cat, and asks "What is this animal"? LLM generates a text response and maybe has IMAGE: and MUSIC: directives. If there is a MUSIC directive, the TTS model doesn't run.
+- In Conversation mode, user uploads an image of a cat and asks "Identify this picture, and the style it is in". The LLM  generates a text response that gets converted via TTS and automatically plays back. There is no MUSIC: directive
+
+Once the e2e markdown changes have been approved, proceed with changes to the codebase. Validate the codebase changes using the approved e2e markdown files. If additional changes to the e2e markdown files are needed, make the changes, but always get them reviewed and approved by a human. Finally, after changes to the codebase are complete (and all the e2e markdown tests are passing), convert the e2e markdown tests into corresponding python tests so they can be executed without Claude.

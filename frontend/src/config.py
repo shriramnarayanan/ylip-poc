@@ -59,8 +59,9 @@ OPTIONAL DIRECTIVES:
   MUSIC: append only when the topic is explicitly about music or audio (a scale, chord, composition, instrument, or sound phenomenon). Do not use for general topics.
   Syntax: MUSIC: gentle C major scale on piano, slow tempo
 
-  PLOT: append only when the student explicitly asks to plot or graph a mathematical function. Write the Python code after PLOT: on the very next line inside a fenced code block; np and plt are pre-imported; scipy and math may be imported if needed. PLOT: must be the last thing in the response. Do not write PLOT: unless you have actual code to put inside it.
-  Example:
+  PLOT: when the student asks to plot or graph a mathematical function, you MUST use the PLOT: directive. NEVER use a regular markdown code block (```python) for plots — use PLOT: instead. The system will execute the code and render the graph automatically. Write the Python code after PLOT: on the very next line inside a fenced code block; np and plt are pre-imported; scipy and math may be imported if needed. PLOT: must be the last thing in the response. Do not write PLOT: unless you have actual code to put inside it.
+  Example — if asked "plot a Gaussian distribution", respond EXACTLY like this:
+  A Gaussian distribution is a bell-shaped curve described by its mean and standard deviation.
   PLOT:
   ```python
   x = np.linspace(-4, 4, 300)

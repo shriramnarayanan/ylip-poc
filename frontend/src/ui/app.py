@@ -15,7 +15,7 @@ import gradio as gr
 import numpy as np
 
 from config import settings, SYSTEM_PROMPT, SYSTEM_PROMPT_CONVERSATION
-from core.orchestrator import Orchestrator
+from core.orchestrator import Orchestrator, _strip_directives
 from core.session import Session
 
 orchestrator = Orchestrator()
@@ -139,7 +139,7 @@ async def chat(message: str, history: list[dict], image, audio_text, audio_conv,
         # ctx.text is the final input text (STT transcription if audio was provided)
         if ctx.text:
             user_display = ctx.text
-        partial_response = ctx.llm_response or ""
+        partial_response = _strip_directives(ctx.llm_response or "")
         final_image = ctx.generated_image
         final_music = ctx.music_audio
 

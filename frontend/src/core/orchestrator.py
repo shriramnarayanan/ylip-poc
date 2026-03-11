@@ -15,11 +15,13 @@ from adapters.llm import LMStudioAdapter
 from core.pipeline import Step, ParallelStep, run_pipeline
 from core.session import Session
 
-# Matches a PLOT: block: PLOT:\n```python\n<code>\n```
-_PLOT_RE = re.compile(r"(?:^|\n)PLOT:\n```(?:python)?\n(.*?)\n```", re.DOTALL)
+# Matches a PLOT: block wherever it appears (inline or on its own line)
+_PLOT_RE = re.compile(r"\s*PLOT:\s*\n?```(?:python)?\n(.*?)\n```", re.DOTALL)
+# Fallback: plain ```python block when the LLM omits the PLOT: directive
+_CODE_BLOCK_RE = re.compile(r"```(?:python)?\n(.*?)\n```", re.DOTALL)
 # Stop at newline or another directive keyword to handle same-line collisions
-_IMAGE_RE = re.compile(r"(?:^|\n)IMAGE:\s*(.+?)(?=\s*(?:\n|MUSIC:|PLOT:|$))", re.MULTILINE)
-_MUSIC_RE = re.compile(r"(?:^|\n)MUSIC:\s*(.+?)(?=\s*(?:\n|IMAGE:|PLOT:|$))", re.MULTILINE)
+_IMAGE_RE = re.compile(r"(?:^|\n|\s)IMAGE:\s*(.+?)(?=\s*(?:\n|MUSIC:|PLOT:|$))", re.MULTILINE)
+_MUSIC_RE = re.compile(r"(?:^|\n|\s)MUSIC:\s*(.+?)(?=\s*(?:\n|IMAGE:|PLOT:|$))", re.MULTILINE)
 # Sentence boundary: punctuation followed by whitespace
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
@@ -40,8 +42,9 @@ def _concat_wav(a: bytes, b: bytes) -> bytes:
 
 
 def _strip_directives(text: str) -> str:
-    """Remove IMAGE:, PLOT:, and MUSIC: blocks before sending to TTS."""
+    """Remove IMAGE:, PLOT:, MUSIC: blocks and any bare code blocks before sending to TTS."""
     text = _PLOT_RE.sub("", text)
+    text = _CODE_BLOCK_RE.sub("", text)
     text = _IMAGE_RE.sub("", text)
     text = _MUSIC_RE.sub("", text)
     return text.strip()
@@ -145,6 +148,9 @@ class Orchestrator:
     async def _code_exec_step(self, ctx: PipelineContext) -> PipelineContext:
         if self.code_exec and ctx.llm_response:
             match = _PLOT_RE.search(ctx.llm_response)
+            if not match:
+                # Fallback: LLM used a plain ```python block instead of PLOT: directive
+                match = _CODE_BLOCK_RE.search(ctx.llm_response)
             if match and match.group(1).strip():
                 ctx.generated_image = await self.code_exec.execute(match.group(1).strip())
         return ctx
