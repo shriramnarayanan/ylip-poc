@@ -81,13 +81,16 @@ class SubjectDB:
         return result
 
 
-def hybrid_search(db: SubjectDB, query: str, n: int = 5) -> list[dict]:
+def hybrid_search(db: SubjectDB, query: str, n: int = 5, query_vec: np.ndarray | None = None) -> list[dict]:
     """
     Hybrid FTS5 + sqlite-vec search, fused with Reciprocal Rank Fusion (k=60).
     Returns up to n chunks with subject, topic, heading, content, score.
     """
     c = db.conn()
     k = 60
+
+    if query_vec is None:
+        query_vec = _embed(query)
 
     # FTS5 keyword search
     fts_ids: list[int] = []
@@ -114,7 +117,6 @@ def hybrid_search(db: SubjectDB, query: str, n: int = 5) -> list[dict]:
     vec_ids: list[int] = []
     vec_rows: dict[int, dict] = {}
     try:
-        query_vec = _embed(query)
         rows = c.execute(
             """
             SELECT ve.rowid, ve.distance, c.topic, c.heading, c.content

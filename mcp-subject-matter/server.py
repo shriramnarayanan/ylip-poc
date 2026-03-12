@@ -9,9 +9,10 @@ Run:
 """
 
 import pathlib
+import numpy as np
 
 from fastmcp import FastMCP
-from retrieval import SubjectDB, hybrid_search
+from retrieval import SubjectDB, hybrid_search, _embed, _embedder
 
 SUBJECTS_DIR = pathlib.Path(__file__).parent / "subjects"
 
@@ -19,7 +20,11 @@ mcp = FastMCP("ylip-subject-matter")
 
 
 def _load(subject: str) -> SubjectDB:
-    path = SUBJECTS_DIR / f"{subject}.db"
+    path = (SUBJECTS_DIR / f"{subject}.db").resolve()
+    base_dir = SUBJECTS_DIR.resolve()
+    if not path.is_relative_to(base_dir) or path.parent != base_dir:
+        raise ValueError(f"Invalid subject name: {subject}")
+
     if not path.exists():
         raise FileNotFoundError(
             f"No subject database '{subject}' found. "
@@ -57,11 +62,23 @@ def search(query: str, subject: str | None = None, n: int = 5) -> list[dict]:
     """
     dbs = [_load(subject)] if subject else [SubjectDB(p) for p in sorted(SUBJECTS_DIR.glob("*.db"))]
 
+    query_vec = _embed(query)
+
     results: list[dict] = []
     for db in dbs:
-        results.extend(hybrid_search(db, query, n))
+        results.extend(hybrid_search(db, query, n, query_vec=query_vec))
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    if len(dbs) > 1 and results:
+        # Cross-database re-ranking via global vector similarity
+        texts = [f"{r.get('heading') or ''} {r['content']}" for r in results]
+        cand_vecs = _embedder().encode(texts, normalize_embeddings=True).astype(np.float32)
+        similarities = np.dot(cand_vecs, query_vec)
+        for i, r in enumerate(results):
+            r["global_score"] = float(similarities[i])
+        results.sort(key=lambda x: x["global_score"], reverse=True)
+    else:
+        results.sort(key=lambda x: x["score"], reverse=True)
+
     return results[:n]
 
 
