@@ -1,0 +1,13 @@
+[project]
+name = "ylip-mcp-subject-matter"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp",
+    "sentence-transformers",
+    "sqlite-vec",
+    "numpy",
+]
+
+[tool.uv]
+package = false

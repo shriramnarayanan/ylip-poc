@@ -16,10 +16,17 @@ For hardware, likely choices are m5stack (https://shop.m5stack.com/) or a raspbe
 
 For software, the front end UI should allow text, camera, and audio inputs. It should be able to render text, images and audio as output. The model will auto-compact periodically (either on a schedule, or depending on usage). However, it should still be able to observe long-term trends in the student, and be able to re-visit areas where it observers the student struggling. The tone of the teacher should be neutral - it should be critical of the student's responses. Encouragement should be reserved for when the student struggles.
 
-Do not use system python. Use python 3.14 in the user's home directory. For all python projects, create a venv and activate it before running any scripts. For projects that use Docker, generate the lockfile this way. Use nvm for Node.JS projects
+## Subject Matter
+Subject matter content should be exposed via MCP servers so the frontend changes are minimal. Consider a curriculum of physical education. Content from approved manuals (PDFs), websites, or specific youtube channels should be exposed to the student. However, the curriculum should cover strength training (using body-weight, free weights and maybe gym equipment if available to the student), but also aerobic exercises (running, biking, swimming), and rules of team sports. Similarly, music has vast areas to cover - vocal, instrumental, and differing styles western classical, mongolian throat singing, indian carnatic music, k-pop.
+
+## Agent Design
+It is likely that the best design mirrors a human school, where there are separate instructors tasked with specific subjects. The design should be flexible to allow for specific agents, like a PE Coach, or a Music Instructor. However, it is also possible that there is a single agent who uses the appropriate MCP tools depending on the subject matter. For PE, the instructor needs to observe the student's posture, and maybe access video. Similarly for Music, the instructor needs microphone input to see if the student is singing in tune / playing the right notes and to correct tempo and dynamic range.
 
 ### RUNNING PYTHON
-Always activate the python venv, and run uv from the user's python installation.
+Do not use system python. Use python 3.14 in the user's home directory. For all python projects, create a venv and activate it before running any scripts. For projects that use Docker, generate the uv lockfile this way. Run uv from the user's python installation.
+
+### RUNNING NODE
+Use nvm for Node.JS projects.
 
 ### RUNNING THE FRONTEND
 In the frontend directory after activating the venv, use uv to `run python .\src\main.py`

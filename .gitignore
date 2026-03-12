@@ -1,7 +1,10 @@
 .env
 .venv
+.claude
 
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+*.db
