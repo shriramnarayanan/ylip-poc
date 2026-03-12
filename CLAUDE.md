@@ -20,7 +20,10 @@ For software, the front end UI should allow text, camera, and audio inputs. It s
 Subject matter content should be exposed via MCP servers so the frontend changes are minimal. Consider a curriculum of physical education. Content from approved manuals (PDFs), websites, or specific youtube channels should be exposed to the student. However, the curriculum should cover strength training (using body-weight, free weights and maybe gym equipment if available to the student), but also aerobic exercises (running, biking, swimming), and rules of team sports. Similarly, music has vast areas to cover - vocal, instrumental, and differing styles western classical, mongolian throat singing, indian carnatic music, k-pop.
 
 ## Agent Design
-It is likely that the best design mirrors a human school, where there are separate instructors tasked with specific subjects. The design should be flexible to allow for specific agents, like a PE Coach, or a Music Instructor. However, it is also possible that there is a single agent who uses the appropriate MCP tools depending on the subject matter. For PE, the instructor needs to observe the student's posture, and maybe access video. Similarly for Music, the instructor needs microphone input to see if the student is singing in tune / playing the right notes and to correct tempo and dynamic range.
+It is likely that the best design mirrors a human school, where there are separate instructors tasked with specific subjects. However, due to strict 8GB RAM constraints on edge hardware, the design must utilize a **Single Orchestrator Agent**. Running concurrent LLM/VLM models specialized per subject will exceed memory and thermal budgets.
+Instead of passing raw continuous video or audio feeds directly into heavy multi-modal models (which drains battery instantly), utilize lightweight edge sensor models (e.g., MediaPipe for PE posture, specialized audio-pitch detectors for music). These edge sensor models emit structured JSON events to the orchestrator LLM via its respective MCP servers. 
+
+The single orchestrator agent uses appropriate MCP tools depending on the subject matter context to maintain the persona of the specific subject instructor.
 
 ### RUNNING PYTHON
 Do not use system python. Use python 3.14 in the user's home directory. For all python projects, create a venv and activate it before running any scripts. For projects that use Docker, generate the uv lockfile this way. Run uv from the user's python installation.
@@ -32,9 +35,15 @@ Use nvm for Node.JS projects.
 In the frontend directory after activating the venv, use uv to `run python .\src\main.py`
 
 ### END TO END TESTS
-Use the Playwright MCP server to test new features or changes to the UI. Before making code changes, create or update the test cases in the e2e markdown files. Use one use-case per file. These changes should be reviewed and approved by a human. Tests should be comprehensive across models, UI panels, and conversation modes. Examples:
+Use the Playwright MCP server to test new features or changes to the UI. Before making code changes, create or update the test cases in the e2e markdown files. Use one use-case per file. These changes should be reviewed and approved by a human. Tests should be comprehensive across models, UI panels, and conversation modes. 
+
+**Hardware Input Mocking in Playwright:**
+Since testing continuous hardware inputs (camera/microphone feeds) directly via virtual Playwright browsers is complex, Playwright tests must rely on a dedicated **Debug Sensor API** in the frontend. This API accepts mocked structured JSON events (e.g. injecting `{"posture": "leaning_left"}` or `"sound_detected": false`) to simulate hardware feeds rather than attempting to pass real video buffers into the E2E test.
+
+Examples:
 - In Text mode, user specifies text input "What is a Gaussian Distribution? Plot one", LLM responds with a PLOT directive which renders a graph. There is no MUSIC: and the TTS model translates the LLM response, but does not include the PLOT directive contents.
 - In Text mode, user uploads an image of a cat, and asks "What is this animal"? LLM generates a text response and maybe has IMAGE: and MUSIC: directives. If there is a MUSIC directive, the TTS model doesn't run.
 - In Conversation mode, user uploads an image of a cat and asks "Identify this picture, and the style it is in". The LLM  generates a text response that gets converted via TTS and automatically plays back. There is no MUSIC: directive
+- **Hardware Mode:** Inject JSON `{ "posture_event": "squat_depth_shallow" }` via the Debug Sensor API. The Orchestrator LLM receives the event and generates TTS feedback: "You need to get a bit lower on your squat".
 
-Once the e2e markdown changes have been approved, proceed with changes to the codebase. Validate the codebase changes using the approved e2e markdown files. If additional changes to the e2e markdown files are needed, make the changes, but always get them reviewed and approved by a human. Finally, after changes to the codebase are complete (and all the e2e markdown tests are passing), convert the e2e markdown tests into corresponding python tests so they can be executed without Claude.
+Once the e2e markdown changes have been approved, proceed with changes to the codebase. Validate the codebase changes using the approved e2e markdown files. If additional changes to the e2e markdown files are needed, make the changes, but always get them reviewed and approved by a human. Finally, after changes to the codebase are complete (and all the e2e markdown tests are passing), convert the e2e markdown tests into corresponding python tests so they can be executed without Claude. The python tests can use the gradio API directly bypassing the UI control layer for user inputs.

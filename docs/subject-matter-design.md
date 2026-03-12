@@ -43,8 +43,11 @@ DEVICE
 - **Content shared across all students.** Same `.db` files, same curriculum graph. Only the recommendation of what to do *next* is personalised.
 - **Student progress pushed inline.** Device sends a progress summary as part of the `recommend_next` call. Remote server is stateless — no persistent student records.
 - **Remote MCP server is stateless per call.** Consults curriculum graph + progress summary, returns recommendations. Simple, privacy-preserving.
-- **S3 URLs flow through the MCP server.** `recommend_next` returns pre-signed S3 URLs; device downloads `.db` files directly from S3. MCP server never proxies content.
+- **Payload Optimization.** `student-history` component locally compacts long-term event streams into macro summaries to cap network payload sizes over multiple years of schooling.
+- **S3 URLs flow through the MCP server.** `recommend_next` returns pre-signed S3 URLs and integrity hashes (`content_hash`); device downloads `.db` files directly from S3. MCP server never proxies content.
+- **Verify Content Downloads.** The `content-manager` must verify the SHA-256 hash post-download to prevent ingested corruption before caching the subject `.db`.
 - **Remote server is MCP (not plain HTTP)** so the on-device LLM agent can call `recommend_next` directly during a tutoring session ("I want to learn something new today") as well as from the scheduled content manager.
+- **Single Edge Model Orchestrator.** Heavy multi-modal models cannot run concurrently on an 8GB Ram hardware constraint (Raspberry PI / M5Stack AI). We utilize a singular agent orchestrator. Continuous physical inputs (video posture, singing pitch) are run against separate lightweight specialized sensor models (like MediaPipe) which emit structured JSON events to the main LLM.
 - **Embedding at ingest time only.** Vectors are computed off-device during ingest and stored in the `.db` file. On-device, only the query needs embedding (fast, small model).
 - **Embedding model:** `all-MiniLM-L6-v2` (80 MB, 384-dim, runs on CPU in ~5 ms per query).
 - **Hybrid retrieval:** sqlite-vec ANN search + FTS5 keyword search, fused with Reciprocal Rank Fusion (k=60).
@@ -65,6 +68,7 @@ CREATE TABLE _manifest (
     embedding_model TEXT,       -- e.g. all-MiniLM-L6-v2
     chunk_count     INTEGER,
     version         TEXT,       -- semver
+    content_hash    TEXT,       -- SHA-256 for integrity verification
     ingested_at     TEXT        -- ISO 8601
 );
 
@@ -101,7 +105,7 @@ CREATE TABLE structured (
 {
   "student_id": "uuid-v4",
   "progress_summary": {
-    "topics_covered":  ["pe/bodyweight/squat", "pe/bodyweight/push-up"],
+    "topics_covered":  ["pe/bodyweight/squat", "pe/bodyweight/push-up"], // bounded recent window or macro summaries to prevent payload bloat
     "struggle_areas":  ["pe/bodyweight/hip-hinge"],
     "last_active":     "2026-03-11",
     "level":           "beginner"
@@ -113,6 +117,7 @@ CREATE TABLE structured (
   {
     "db_file":    "pe/bodyweight-intermediate-v1.2.db",
     "s3_url":     "https://s3.../...",
+    "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "expires_at": "2026-03-11T18:00:00Z",
     "manifest":   { "title": "...", "prerequisites": [...], "tags": [...] }
   }
