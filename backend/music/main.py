@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from transformers import pipeline
 import logging
 
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YLIP Music Generation Backend")

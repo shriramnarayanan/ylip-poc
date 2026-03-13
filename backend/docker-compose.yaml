@@ -5,6 +5,8 @@ services:
       context: ./tts
     ports:
       - "8880:8880"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - kokoro_cache:/root/.cache
     healthcheck:
@@ -27,6 +29,7 @@ services:
     environment:
       - DEVICE=cpu
       - COMPUTE_TYPE=int8
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     deploy:
       resources:
         reservations:
@@ -51,6 +54,8 @@ services:
       - hf_cache:/root/.cache/huggingface
     env_file:
       - ./image/.env
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     deploy:
       resources:
         reservations:
@@ -71,6 +76,8 @@ services:
       context: ./code_exec
     ports:
       - "8883:8883"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8883/health')" ]
       interval: 30s
@@ -86,6 +93,8 @@ services:
       - "8884:8884"
     volumes:
       - hf_cache:/root/.cache/huggingface
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     deploy:
       resources:
         reservations:
