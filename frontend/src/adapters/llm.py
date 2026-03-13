@@ -119,7 +119,7 @@ class LMStudioAdapter(LLMAdapter):
         tools.extend(self._get_synthetic_tools())
         kwargs = {"tools": tools}
 
-        stream = await self._client.chat.completions.create(
+        stream_response = await self._client.chat.completions.create(
             model=settings.lm_studio_model,
             messages=self._to_openai(messages),
             max_tokens=settings.lm_studio_max_tokens,
@@ -128,14 +128,68 @@ class LMStudioAdapter(LLMAdapter):
             **kwargs
         )
         
-        async for chunk in stream:
+        tool_calls_buffer = {}
+
+        async for chunk in stream_response:
             if chunk.choices and chunk.choices[0].delta:
                 delta = chunk.choices[0].delta
                 
-                # If the delta requests a tool call, we handle it synchronously under the hood, then yield.
-                if delta.tool_calls:
-                    # In a true robust stream, we'd buffer tool_calls here. 
-                    # To keep YLIP lean, we fallback the stream to `generate` if a tool is hit mid-stream.
-                    pass
-                elif delta.content:
+                if hasattr(delta, "tool_calls") and delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_buffer:
+                            tool_calls_buffer[idx] = {
+                                "id": tc.id or f"call_{idx}",
+                                "name": (tc.function.name if tc.function else "") or "",
+                                "arguments": (tc.function.arguments if tc.function else "") or ""
+                            }
+                        else:
+                            if tc.function and tc.function.name:
+                                tool_calls_buffer[idx]["name"] += tc.function.name
+                            if tc.function and tc.function.arguments:
+                                tool_calls_buffer[idx]["arguments"] += tc.function.arguments
+                elif delta.content and not tool_calls_buffer:
+                    # Only yield normal content if we aren't currently capturing a tool call
                     yield delta.content
+
+        if tool_calls_buffer:
+            messages.append(Message(
+                role="assistant", 
+                content="", 
+                tool_calls=[{
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc["arguments"]}
+                } for tc in tool_calls_buffer.values()]
+            ))
+
+            for tc in tool_calls_buffer.values():
+                fn_name = tc["name"]
+                try:
+                    fn_args = json.loads(tc["arguments"])
+                except Exception:
+                    fn_args = {}
+                
+                # Intercept Synthetic UI Side-Effects
+                if fn_name == "generate_image":
+                    if ctx: ctx.pending_image_prompt = fn_args.get("prompt")
+                    result_text = "Image queued for UI rendering."
+                elif fn_name == "generate_music":
+                    if ctx: ctx.pending_music_prompt = fn_args.get("prompt")
+                    result_text = "Music queued for UI rendering."
+                elif fn_name == "plot_function":
+                    if ctx: ctx.pending_plot_code = fn_args.get("python_code")
+                    result_text = "Plot queued for UI rendering."
+                else:
+                    # Execute remote MCP Subject Matter Tools
+                    result_text = await self._mcp.call_tool(fn_name, fn_args)
+                
+                messages.append(Message(
+                    role="tool", 
+                    content=str(result_text),
+                    tool_call_id=tc["id"]
+                ))
+            
+            # Recurse the stream with the populated tool contexts
+            async for next_chunk in self.stream(messages, ctx):
+                yield next_chunk

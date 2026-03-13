@@ -35,6 +35,6 @@ The student asks the tutor to explain and plot a mathematical function.
 - [x] Python test written
 
 ## Findings during validation
-- LLM (Gemma-3-4b) sometimes emits plain ` ```python ``` ` blocks instead of `PLOT:` directive. Fixed by adding `_CODE_BLOCK_RE` fallback in `orchestrator._code_exec_step`.
-- TTS was reading Python code aloud (36s audio). Fixed by stripping all code blocks in `_strip_directives`.
+- Code execution generated a warning about missing output but produced the correct PNG byte stream. Ignored for now.
+- TTS was reading Python code aloud (36s audio). Fixed by extracting media intents upfront instead of legacy stripping methods.
 - `scipy` was missing from code_exec container. Fixed by adding `scipy>=1.11` to `backend/code_exec/pyproject.toml` and rebuilding.
