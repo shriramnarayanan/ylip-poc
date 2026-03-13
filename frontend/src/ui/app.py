@@ -245,6 +245,7 @@ def model_status() -> str:
         f"**TTS:** {'enabled — ' + settings.tts_model if settings.tts_enabled else 'disabled'}",
         f"**STT:** {'enabled — whisper/' + settings.stt_model if settings.stt_enabled else 'disabled'}",
         f"**Image gen:** {'enabled — ' + settings.image_model if settings.image_enabled else 'disabled'}",
+        f"**Music gen:** {'enabled' if settings.music_gen_enabled else 'disabled'}",
         f"**Vision:** {'enabled — ' + settings.vision_model if settings.vision_enabled else 'disabled'}",
     ]
     return "\n".join(lines)
