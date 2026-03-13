@@ -9,6 +9,7 @@ Two modes:
 
 import asyncio
 import io
+import threading
 from dataclasses import dataclass, field
 
 import gradio as gr
@@ -20,6 +21,10 @@ from core.session import Session
 
 orchestrator = Orchestrator()
 session = Session()
+
+# Stop flag: set by the Stop button to mute TTS without cancelling the generator.
+# Image / plot / music generation continues and renders normally.
+_tts_stop = threading.Event()
 
 
 # ------------------------------------------------------------------ #
@@ -128,51 +133,62 @@ async def chat(message: str, history: list[dict], image, audio_text, audio_conv,
     # Used to delay the next sentence so it doesn't interrupt the previous one.
     audio_ends_at = 0.0
 
-    prompt = SYSTEM_PROMPT_CONVERSATION if mode == "Conversation" else SYSTEM_PROMPT
-    async for ctx in orchestrator.stream_run(
+    # Reset stop flag for this request; Stop button may set it mid-response.
+    _tts_stop.clear()
+
+    is_conversation = mode == "Conversation"
+    prompt = SYSTEM_PROMPT_CONVERSATION if is_conversation else SYSTEM_PROMPT
+    gen = orchestrator.stream_run(
         session=session,
         text=message,
         image_bytes=image_bytes,
         audio_bytes=audio_bytes,
         system_prompt=prompt,
-    ):
-        # ctx.text is the final input text (STT transcription if audio was provided)
-        if ctx.text:
-            user_display = ctx.text
-        partial_response = (ctx.llm_response or "").strip()
-        final_image = ctx.generated_image
-        final_music = ctx.music_audio
+        streaming_tts=is_conversation,
+        tts_stop_event=_tts_stop,
+    )
+    try:
+        async for ctx in gen:
+            # ctx.text is the final input text (STT transcription if audio was provided)
+            if ctx.text:
+                user_display = ctx.text
+            partial_response = (ctx.llm_response or "").strip()
+            final_image = ctx.generated_image
+            final_music = ctx.music_audio
 
-        current_history = list(history) + [
-            {"role": "user", "content": user_display},
-            {"role": "assistant", "content": partial_response},
-        ]
-        image_out = [_bytes_to_pil(final_image)] if final_image else []
+            current_history = list(history) + [
+                {"role": "user", "content": user_display},
+                {"role": "assistant", "content": partial_response},
+            ]
+            image_out = [_bytes_to_pil(final_image)] if final_image else []
 
-        if ctx.tts_audio:
-            sr, arr = _bytes_to_audio(ctx.tts_audio)
-            duration = len(arr) / sr
-            # Sleep until the previous sentence has finished, then autoplay next.
-            # asyncio.sleep yields to the event loop so text tokens still stream.
-            wait = audio_ends_at - asyncio.get_event_loop().time() + 0.15
-            if wait > 0:
-                await asyncio.sleep(wait)
-            audio_update = gr.update(value=(sr, arr))
-            audio_ends_at = asyncio.get_event_loop().time() + duration
-        else:
-            audio_update = gr.update()
+            if ctx.tts_audio:
+                sr, arr = _bytes_to_audio(ctx.tts_audio)
+                duration = len(arr) / sr
+                # Sleep until the previous sentence has finished, then autoplay next.
+                # asyncio.sleep yields to the event loop so text tokens still stream.
+                wait = audio_ends_at - asyncio.get_event_loop().time() + 0.15
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                audio_update = gr.update(value=(sr, arr))
+                audio_ends_at = asyncio.get_event_loop().time() + duration
+            else:
+                audio_update = gr.update()
 
-        music_update = gr.update(value=_bytes_to_audio(final_music), autoplay=True) if final_music else gr.update()
+            music_update = gr.update(value=_bytes_to_audio(final_music), autoplay=True) if final_music else gr.update()
 
-        yield (
-            current_history,
-            image_out,
-            audio_update,
-            music_update,
-            gr.update(value=""),
-            gr.update(value=None),
-            gr.update(value=None),
-        )
+            yield (
+                current_history,
+                image_out,
+                audio_update,
+                music_update,
+                gr.update(value=""),
+                gr.update(value=None),
+                gr.update(value=None),
+            )
+    finally:
+        # Ensure orchestrator cleans up pending TTS/image tasks on Stop or error.
+        await gen.aclose()
 
     session.add("user", user_display)
     session.add("assistant", partial_response)
@@ -208,6 +224,7 @@ def switch_mode(mode: str):
         gr.update(visible=not is_conv),  # audio_text
         gr.update(visible=is_conv),      # audio_conv
         gr.update(visible=is_conv),      # pause_btn
+        gr.update(visible=not is_conv),  # stop_btn
         ConvState(),                     # reset VAD state
     )
 
@@ -296,6 +313,7 @@ def build_ui() -> gr.Blocks:
             )
             with gr.Column(scale=1, min_width=120):
                 submit_btn = gr.Button("Send", variant="primary")
+                stop_btn = gr.Button("Stop", variant="stop")
                 clear_btn = gr.Button("Clear session")
 
         # ---- Shared: image upload + optional mic in text mode --------
@@ -316,7 +334,7 @@ def build_ui() -> gr.Blocks:
         mode.change(
             fn=lambda m: (m, *switch_mode(m)),
             inputs=[mode],
-            outputs=[mode_state, text_in, submit_btn, audio_text, audio_conv, pause_btn, conv_state],
+            outputs=[mode_state, text_in, submit_btn, audio_text, audio_conv, pause_btn, stop_btn, conv_state],
         )
 
         # ---- Pause / resume mic ------------------------------------
@@ -337,6 +355,9 @@ def build_ui() -> gr.Blocks:
         # Text mode: button and Enter
         submit_btn.click(fn=chat, inputs=inputs, outputs=outputs)
         text_in.submit(fn=chat, inputs=inputs, outputs=outputs)
+
+        # Stop mutes TTS only — image / plot / music generation continues and renders.
+        stop_btn.click(fn=_tts_stop.set, outputs=[])
 
         # Conversation mode: trigger fires only when real audio arrives (not when cleared)
         conv_trigger.change(fn=chat, inputs=inputs, outputs=outputs)

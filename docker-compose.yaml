@@ -5,6 +5,8 @@ services:
     ports:
       - "8770:8770"
     restart: unless-stopped
+    env_file:
+      - ./mcp-subject-matter/.env
     volumes:
       - ./mcp-subject-matter/subjects:/app/subjects
 

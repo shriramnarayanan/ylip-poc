@@ -27,6 +27,7 @@ class PipelineContext:
     pending_image_prompt: str | None = None
     pending_music_prompt: str | None = None
     pending_plot_code: str | None = None
+    pending_speak_text: str | None = None
 
 
 class LLMAdapter(ABC):

@@ -61,6 +61,14 @@ class LMStudioAdapter(LLMAdapter):
                     "description": "Plot a mathematical function using pure python math/matplotlib.",
                     "parameters": {"type": "object", "properties": {"python_code": {"type": "string"}}, "required": ["python_code"]}
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "speak",
+                    "description": "Sound out a word or short phrase aloud when the student asks how to pronounce it.",
+                    "parameters": {"type": "object", "properties": {"word": {"type": "string"}}, "required": ["word"]}
+                }
             }
         ]
 
@@ -99,6 +107,9 @@ class LMStudioAdapter(LLMAdapter):
                 elif fn_name == "plot_function":
                     if ctx: ctx.pending_plot_code = fn_args.get("python_code")
                     result_text = "Plot queued for UI rendering."
+                elif fn_name == "speak":
+                    if ctx: ctx.pending_speak_text = fn_args.get("word")
+                    result_text = "Word queued for pronunciation."
                 else:
                     # Execute remote MCP Subject Matter Tools
                     result_text = await self._mcp.call_tool(fn_name, fn_args)
@@ -180,6 +191,9 @@ class LMStudioAdapter(LLMAdapter):
                 elif fn_name == "plot_function":
                     if ctx: ctx.pending_plot_code = fn_args.get("python_code")
                     result_text = "Plot queued for UI rendering."
+                elif fn_name == "speak":
+                    if ctx: ctx.pending_speak_text = fn_args.get("word")
+                    result_text = "Word queued for pronunciation."
                 else:
                     # Execute remote MCP Subject Matter Tools
                     result_text = await self._mcp.call_tool(fn_name, fn_args)

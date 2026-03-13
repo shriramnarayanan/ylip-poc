@@ -95,8 +95,10 @@ def test_plot_image_rendered(plot_result):
     assert plot_result["has_plot"], "Expected a plot image in the gallery"
 
 
-def test_voice_audio_present(plot_result):
-    assert plot_result["has_voice"], "Expected voice TTS audio to be present"
+def test_voice_audio_absent(plot_result):
+    # Text mode TTS only fires for explicit speak() calls.
+    # A math/plot prompt does not call speak(), so no audio is expected.
+    assert not plot_result["has_voice"], "No TTS audio expected for a math/plot prompt in Text mode"
 
 
 def test_music_absent(plot_result):

@@ -6,6 +6,7 @@ then either runs them to completion or streams the LLM stage for UI responsivene
 import asyncio
 import io
 import re
+import threading
 import wave
 from typing import AsyncIterator
 
@@ -187,6 +188,8 @@ class Orchestrator:
         image_bytes: bytes | None = None,
         audio_bytes: bytes | None = None,
         system_prompt: str = SYSTEM_PROMPT,
+        streaming_tts: bool = False,
+        tts_stop_event: threading.Event | None = None,
     ) -> AsyncIterator[PipelineContext]:
         if audio_bytes and self.stt:
             text = await self.stt.transcribe(audio_bytes)
@@ -198,74 +201,142 @@ class Orchestrator:
         messages = session.to_messages(system_prompt) + [Message(role="user", content=text)]
         ctx = PipelineContext(text=text, image_bytes=image_bytes, history=messages, llm_response="")
 
-        # Start TTS tasks sentence-by-sentence while the LLM streams.
-        # Each time the earliest pending task is done we set ctx.tts_audio and
-        # yield immediately so the caller can stream the audio chunk without
-        # waiting for the rest of the response.
         sentence_buf = ""
         tts_tasks: list[asyncio.Task] = []
-        do_tts = self.tts is not None
+        image_task: asyncio.Task | None = None
+        music_task: asyncio.Task | None = None
+        # Streaming TTS (sentence-by-sentence) only in Conversation mode.
+        # Text mode uses speak() tool for explicit word pronunciation only.
+        do_tts = self.tts is not None and streaming_tts
 
-        async for token in self.llm.stream(messages, ctx=ctx):
-            ctx.llm_response += token
-            if do_tts:
-                sentence_buf += token
-                m = _SENTENCE_RE.search(sentence_buf)
-                if m:
-                    complete = sentence_buf[: m.start() + 1]
-                    sentence_buf = sentence_buf[m.end():]
-                    clean = complete.strip()
-                    if clean:
-                        tts_tasks.append(asyncio.create_task(self.tts.synthesize(clean)))
-            # Ship the earliest completed sentence immediately (maintains order).
+        def _tts_stopped() -> bool:
+            return tts_stop_event is not None and tts_stop_event.is_set()
+
+        try:
+            async for token in self.llm.stream(messages, ctx=ctx):
+                ctx.llm_response += token
+                if do_tts and not _tts_stopped():
+                    sentence_buf += token
+                    m = _SENTENCE_RE.search(sentence_buf)
+                    if m:
+                        complete = sentence_buf[: m.start() + 1]
+                        sentence_buf = sentence_buf[m.end():]
+                        clean = complete.strip()
+                        if clean:
+                            tts_tasks.append(asyncio.create_task(self.tts.synthesize(clean)))
+                # Ship the earliest completed sentence immediately (maintains order).
+                ctx.tts_audio = None
+                if do_tts and tts_tasks and tts_tasks[0].done():
+                    try:
+                        ctx.tts_audio = tts_tasks.pop(0).result()
+                    except Exception:
+                        tts_tasks.pop(0)
+                yield ctx
+
             ctx.tts_audio = None
-            if do_tts and tts_tasks and tts_tasks[0].done():
+
+            # Flush any remaining sentence buffer (Conversation mode)
+            if do_tts and not _tts_stopped() and sentence_buf.strip():
+                clean = sentence_buf.strip()
+                if clean:
+                    tts_tasks.append(asyncio.create_task(self.tts.synthesize(clean)))
+
+            # Cancel TTS if music takes over audio output
+            if tts_tasks and self.music_gen and ctx.pending_music_prompt:
+                for t in tts_tasks:
+                    t.cancel()
+                tts_tasks.clear()
+
+            # Text mode: synthesize only the explicitly requested word/phrase.
+            # This runs regardless of streaming_tts but respects the stop flag.
+            if self.tts and ctx.pending_speak_text and not _tts_stopped():
                 try:
-                    ctx.tts_audio = tts_tasks.pop(0).result()
+                    ctx.tts_audio = await self.tts.synthesize(ctx.pending_speak_text)
                 except Exception:
-                    tts_tasks.pop(0)
-            yield ctx
+                    ctx.tts_audio = None
 
-        ctx.tts_audio = None  # clear before post-LLM phase
+            # Start image/code and music tasks immediately — parallel with TTS drain.
+            # Image has higher priority: it is yielded as soon as it arrives, even
+            # if TTS sentences are still queued.
+            if self.code_exec and ctx.pending_plot_code:
+                image_task = asyncio.create_task(
+                    self.code_exec.execute(ctx.pending_plot_code)
+                )
+            elif self.image_gen and ctx.pending_image_prompt:
+                image_task = asyncio.create_task(
+                    self.image_gen.generate(ctx.pending_image_prompt)
+                )
 
-        # Flush any remaining text
-        if do_tts and sentence_buf.strip():
-            clean = sentence_buf.strip()
-            if clean:
-                tts_tasks.append(asyncio.create_task(self.tts.synthesize(clean)))
+            if self.music_gen and ctx.pending_music_prompt:
+                music_task = asyncio.create_task(
+                    self.music_gen.generate(ctx.pending_music_prompt)
+                )
 
-        # Cancel TTS if music is present (music gen takes over audio output)
-        if tts_tasks and self.music_gen and ctx.pending_music_prompt:
-            for t in tts_tasks:
-                t.cancel()
-            tts_tasks.clear()
+            # Drain TTS queue, surfacing image/music as soon as they complete.
+            for tts_task in tts_tasks:
+                pending: set[asyncio.Task] = {tts_task}
+                if image_task and not image_task.done():
+                    pending.add(image_task)
+                if music_task and not music_task.done():
+                    pending.add(music_task)
 
-        # Yield each remaining sentence in order as it completes
-        for task in tts_tasks:
-            try:
-                ctx.tts_audio = await task
+                done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+
+                if image_task in done:
+                    try:
+                        ctx.generated_image = image_task.result()
+                    except Exception:
+                        pass
+                    image_task = None
+
+                if music_task in done:
+                    try:
+                        ctx.music_audio = music_task.result()
+                    except Exception:
+                        pass
+                    music_task = None
+
+                ctx.tts_audio = None
+                if tts_task in done:
+                    try:
+                        ctx.tts_audio = tts_task.result()
+                    except Exception:
+                        pass
                 yield ctx
                 ctx.tts_audio = None
-            except Exception:
-                pass
 
-        # Post-LLM: music gen, image gen, code exec — TTS handled above
-        post = []
-        if settings.music_gen_enabled:
-            post.append(Step("music_gen", self._music_gen_step))
-        if settings.image_enabled:
-            post.append(Step("image_gen", self._image_gen_step))
-        if settings.code_exec_enabled:
-            post.append(Step("code_exec", self._code_exec_step))
+                # If image/music arrived before TTS, wait for TTS now and yield audio.
+                if not tts_task.done():
+                    try:
+                        ctx.tts_audio = await tts_task
+                        yield ctx
+                        ctx.tts_audio = None
+                    except Exception:
+                        pass
 
-        if len(post) == 1:
-            ctx = await post[0].fn(ctx)
-        elif len(post) > 1:
-            results = await asyncio.gather(*(s.fn(ctx) for s in post))
-            for r in results:
-                if r.music_audio:
-                    ctx.music_audio = r.music_audio
-                if r.generated_image:
-                    ctx.generated_image = r.generated_image
+            # Wait for any tasks that outlasted the TTS queue
+            if image_task:
+                try:
+                    ctx.generated_image = await image_task
+                except Exception:
+                    pass
+                image_task = None
 
-        yield ctx
+            if music_task:
+                try:
+                    ctx.music_audio = await music_task
+                except Exception:
+                    pass
+                music_task = None
+
+            yield ctx
+
+        finally:
+            # Cancel all pending background tasks when the generator is closed
+            # (normal completion, exception, or user-initiated Stop).
+            for t in tts_tasks:
+                t.cancel()
+            if image_task:
+                image_task.cancel()
+            if music_task:
+                music_task.cancel()
