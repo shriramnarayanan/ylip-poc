@@ -12,6 +12,7 @@ import builtins
 import io
 import re
 import traceback
+import logging
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -20,6 +21,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 matplotlib.use("Agg")  # non-interactive, no display needed
 
@@ -77,9 +80,7 @@ async def execute(req: ExecRequest):
         code = "\n".join(lines).strip()
     
     code = _IMPORT_RE.sub("", code).strip()
-    print("--- EXECUTING PLOT CODE ---")
-    print(code)
-    print("---------------------------")
+    logger.debug(f"--- EXECUTING PLOT CODE ---\n{code}\n---------------------------")
     
     plt.close("all")
     try:

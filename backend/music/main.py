@@ -19,6 +19,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from transformers import pipeline
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YLIP Music Generation Backend")
 
@@ -32,9 +35,9 @@ def _load_pipe():
         return _pipe
     device = os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
     model = os.environ.get("MUSIC_MODEL", "facebook/musicgen-small")
-    print(f"Loading {model} on {device}...")
+    logger.info(f"Loading {model} on {device}...")
     _pipe = pipeline("text-to-audio", model=model, device=device)
-    print("Model loaded.")
+    logger.info("Model loaded.")
     return _pipe
 
 

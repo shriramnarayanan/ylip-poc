@@ -8,6 +8,9 @@ from mcp.client.sse import sse_client
 from mcp.types import Tool, CallToolResult
 
 from config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MCPSubjectMatterClient:
     """Client for the remote mcp-subject-matter SSE server."""
@@ -32,7 +35,7 @@ class MCPSubjectMatterClient:
                     response = await session.list_tools()
                     self._tools = response.tools
             except Exception as e:
-                print(f"Failed to connect to MCP server at {self._url}: {e}")
+                logger.warning(f"Failed to connect to MCP server at {self._url}: {e}")
                 return []
 
         # Convert MCP Tool schema to OpenAI tool schema

@@ -19,6 +19,9 @@ from diffusers import AutoPipelineForText2Image
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="YLIP Image Generation Backend")
 
@@ -34,13 +37,13 @@ def _load_pipe():
         return _pipe
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else torch.float32
-    print(f"Loading {MODEL_ID} on {device}...")
+    logger.info(f"Loading {MODEL_ID} on {device}...")
     _pipe = AutoPipelineForText2Image.from_pretrained(
         MODEL_ID,
         torch_dtype=dtype,
         variant="fp16" if device == "cuda" else None,
     ).to(device)
-    print("Model loaded.")
+    logger.info("Model loaded.")
     return _pipe
 
 
