@@ -7,6 +7,8 @@ from typing import AsyncIterator
 class Message:
     role: str  # "user" | "assistant" | "system"
     content: str
+    tool_calls: list | None = None
+    tool_call_id: str | None = None
 
 
 @dataclass
@@ -17,21 +19,29 @@ class PipelineContext:
     image_bytes: bytes | None = None
     audio_bytes: bytes | None = None
     history: list[Message] = field(default_factory=list)
-
-    # Outputs (populated as pipeline stages run)
+    vision_description: str | None = None
     llm_response: str | None = None
     tts_audio: bytes | None = None
     music_audio: bytes | None = None
     generated_image: bytes | None = None
-    vision_description: str | None = None
+    pending_image_prompt: str | None = None
+    pending_music_prompt: str | None = None
+    pending_plot_code: str | None = None
 
 
 class LLMAdapter(ABC):
     @abstractmethod
-    async def generate(self, messages: list[Message]) -> str: ...
+    async def generate(self, messages: list[Message], ctx: PipelineContext | None = None) -> str:
+        """
+        Generate a single completion string given a conversation history.
+        The optional ctx allows adapters to deposit metadata (like tool traps).
+        """
+        pass
 
     @abstractmethod
-    def stream(self, messages: list[Message]) -> AsyncIterator[str]: ...
+    async def stream(self, messages: list[Message], ctx: PipelineContext | None = None) -> AsyncIterator[str]:
+        """Stream a completion string token by token."""
+        pass
 
 
 class TTSAdapter(ABC):

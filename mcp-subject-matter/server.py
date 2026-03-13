@@ -92,4 +92,12 @@ def get_structured(subject: str, category: str | None = None) -> list[dict]:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+    transport = os.getenv("TRANSPORT", "stdio")
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8770"))
+    
+    if transport == "sse":
+        mcp.run(transport="sse", host=host, port=port)
+    else:
+        mcp.run(transport="stdio")
