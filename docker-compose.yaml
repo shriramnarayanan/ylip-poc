@@ -1,0 +1,30 @@
+services:
+  mcp-subject-matter:
+    build:
+      context: ./mcp-subject-matter
+    ports:
+      - "8770:8770"
+    restart: unless-stopped
+    volumes:
+      - ./mcp-subject-matter/subjects:/app/subjects
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "7860:7860"
+    restart: unless-stopped
+    depends_on:
+      - mcp-subject-matter
+    environment:
+      # Internal Docker DNS: connect directly to the compose service name
+      - YLIP_MCP_SUBJECT_MATTER_URL=http://mcp-subject-matter:8770/sse
+      # Host routing: route traffic bound for the local machine's ports to host.docker.internal
+      - YLIP_LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+      - YLIP_TTS_BASE_URL=http://host.docker.internal:8880/v1
+      - YLIP_STT_BASE_URL=http://host.docker.internal:8881/v1
+      - YLIP_IMAGE_BASE_URL=http://host.docker.internal:8882/v1
+      - YLIP_CODE_EXEC_BASE_URL=http://host.docker.internal:8883/v1
+      - YLIP_MUSIC_GEN_BASE_URL=http://host.docker.internal:8884/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
