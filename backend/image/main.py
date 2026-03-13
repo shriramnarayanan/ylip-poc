@@ -14,10 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import uvicorn
-from huggingface_hub import login as hf_login
 
-if token := os.environ.get("HF_TOKEN"):
-    hf_login(token=token, add_to_git_credential=False)
 from diffusers import AutoPipelineForText2Image
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse

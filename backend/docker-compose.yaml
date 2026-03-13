@@ -8,7 +8,7 @@ services:
     volumes:
       - kokoro_cache:/root/.cache
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -22,6 +22,8 @@ services:
       - "8881:8881"
     volumes:
       - whisper_cache:/root/.cache
+    env_file:
+      - ./stt/.env
     environment:
       - DEVICE=cpu
       - COMPUTE_TYPE=int8
@@ -31,9 +33,9 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8881/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8881/health')" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -47,17 +49,17 @@ services:
       - "8882:8882"
     volumes:
       - hf_cache:/root/.cache/huggingface
-    environment:
-      - HF_TOKEN=${HF_TOKEN:-}
+    env_file:
+      - ./image/.env
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8882/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8882/health')" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -70,7 +72,7 @@ services:
     ports:
       - "8883:8883"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8883/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8883/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -90,9 +92,9 @@ services:
           devices:
             - driver: nvidia
               count: all
-              capabilities: [gpu]
+              capabilities: [ gpu ]
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8884/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8884/health')" ]
       interval: 30s
       timeout: 10s
       retries: 5

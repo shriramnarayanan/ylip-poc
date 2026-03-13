@@ -57,17 +57,30 @@ class ExecRequest(BaseModel):
     code: str
 
 
-# Strip redundant numpy/matplotlib imports — they're already bound as np and plt.
 # Leave scipy, math, etc. intact so they can be imported normally.
 _IMPORT_RE = re.compile(
     r"^\s*(import\s+(numpy|matplotlib)[^\n]*|from\s+(numpy|matplotlib)\S*\s+import[^\n]*)\n?",
     re.MULTILINE,
 )
 
-
 @app.post("/v1/execute")
 async def execute(req: ExecRequest):
-    code = _IMPORT_RE.sub("", req.code).strip()
+    code = req.code.strip()
+    
+    # Robustly strip markdown blocks if the LLM hallucinates them
+    if code.startswith("```"):
+        lines = code.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        code = "\n".join(lines).strip()
+    
+    code = _IMPORT_RE.sub("", code).strip()
+    print("--- EXECUTING PLOT CODE ---")
+    print(code)
+    print("---------------------------")
+    
     plt.close("all")
     try:
         exec(code, dict(EXEC_GLOBALS))
