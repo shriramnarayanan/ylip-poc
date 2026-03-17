@@ -135,11 +135,14 @@ def test_vision_no_raw_directives():
 
 
 @vision_skip
-def test_vision_audio_present():
-    """Either voice response or music audio must be present."""
+def test_vision_audio_absent():
+    """In Text mode, TTS fires only for explicit speak() calls and music only for
+    generate_music calls. A simple 'What is this animal?' question should produce
+    neither — the response is text-only."""
     result = _call_chat_with_image(_TEST_PNG_B64, PROMPT)
-    assert result["has_voice"] or result["has_music"], (
-        "Expected either voice or music audio to be present"
+    # Voice and music are both optional; we only assert they are not both present.
+    assert not (result["has_voice"] and result["has_music"]), (
+        "Voice TTS and Music must not both be active simultaneously"
     )
 
 

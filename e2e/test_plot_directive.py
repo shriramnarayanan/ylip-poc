@@ -15,8 +15,24 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("YLIP_BASE_URL", "http://localhost:7860")
+CODE_EXEC_URL = os.environ.get("YLIP_CODE_EXEC_URL", "http://localhost:8883")
 LLM_TIMEOUT = int(os.environ.get("YLIP_LLM_TIMEOUT_MS", "120000")) / 1000
 PROMPT = "What is a Gaussian Distribution? Plot one."
+
+
+def _code_exec_available() -> bool:
+    """Return True if the code execution backend is reachable (any HTTP response)."""
+    try:
+        requests.get(f"{CODE_EXEC_URL}/", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+plot_skip = pytest.mark.skipif(
+    not _code_exec_available(),
+    reason="Code execution backend not running — start it and re-run",
+)
 
 
 def _call_chat(prompt: str) -> dict:
@@ -91,6 +107,7 @@ def test_chatbot_has_response(plot_result):
     assert plot_result["chatbot_text"].strip(), "Expected non-empty assistant reply"
 
 
+@plot_skip
 def test_plot_image_rendered(plot_result):
     assert plot_result["has_plot"], "Expected a plot image in the gallery"
 

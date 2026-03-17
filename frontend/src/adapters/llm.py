@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import AsyncIterator
 
 from openai import AsyncOpenAI
@@ -6,6 +7,10 @@ from openai import AsyncOpenAI
 from config import settings
 from adapters.base import LLMAdapter, Message, PipelineContext
 from adapters.mcp_client import MCPSubjectMatterClient
+
+logger = logging.getLogger(__name__)
+
+MAX_TOOL_ROUNDS = 5
 
 
 class LMStudioAdapter(LLMAdapter):
@@ -72,63 +77,63 @@ class LMStudioAdapter(LLMAdapter):
             }
         ]
 
-    async def generate(self, messages: list[Message], ctx: PipelineContext | None = None) -> str:
+    async def generate(self, messages: list[Message], ctx: PipelineContext | None = None, _depth: int = 0) -> str:
         tools = await self._mcp.get_tools()
         tools.extend(self._get_synthetic_tools())
-        
-        kwargs = {"tools": tools}
 
         response = await self._client.chat.completions.create(
             model=settings.lm_studio_model,
             messages=self._to_openai(messages),
             max_tokens=settings.lm_studio_max_tokens,
             temperature=settings.lm_studio_temperature,
-            **kwargs,
+            tools=tools,
         )
-        
+
         msg = response.choices[0].message
-        
-        # Tool execution loop
+
         if msg.tool_calls:
-            # We append the original assistant response carrying the tool_calls
             messages.append(Message(role="assistant", content=msg.content or "", tool_calls=msg.model_dump().get("tool_calls", [])))
-            
+
+            has_mcp_call = False
+
             for tool_call in msg.tool_calls:
                 fn_name = tool_call.function.name
                 fn_args = json.loads(tool_call.function.arguments)
-                
-                # Intercept Synthetic UI Side-Effects
+
                 if fn_name == "generate_image":
                     if ctx: ctx.pending_image_prompt = fn_args.get("prompt")
-                    result_text = "Image queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "generate_music":
                     if ctx: ctx.pending_music_prompt = fn_args.get("prompt")
-                    result_text = "Music queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "plot_function":
                     if ctx: ctx.pending_plot_code = fn_args.get("python_code")
-                    result_text = "Plot queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "speak":
                     if ctx: ctx.pending_speak_text = fn_args.get("word")
-                    result_text = "Word queued for pronunciation."
+                    result_text = "ok"
                 else:
-                    # Execute remote MCP Subject Matter Tools
                     result_text = await self._mcp.call_tool(fn_name, fn_args)
-                
-                messages.append(Message(
-                    role="tool", 
-                    content=result_text,
-                    tool_call_id=tool_call.id
-                ))
-            
-            # Recurse with the newly appended tool context
-            return await self.generate(messages, ctx)
+                    has_mcp_call = True
+
+                messages.append(Message(role="tool", content=result_text, tool_call_id=tool_call.id))
+
+            # Recurse when:
+            # (a) MCP tools returned data the LLM needs to synthesise, OR
+            # (b) The model emitted only tool calls with no text — recurse to get the explanation.
+            #     Empty synthetic results prevent an "Okay, I've done it" acknowledgement.
+            should_recurse = has_mcp_call or not (msg.content or "").strip()
+            if should_recurse and _depth < MAX_TOOL_ROUNDS:
+                return await self.generate(messages, ctx, _depth + 1)
+            if should_recurse:
+                logger.warning("Tool-call depth limit (%d) reached — returning partial response", MAX_TOOL_ROUNDS)
+            return msg.content or ""
 
         return msg.content or ""
 
-    async def stream(self, messages: list[Message], ctx: PipelineContext | None = None) -> AsyncIterator[str]:
+    async def stream(self, messages: list[Message], ctx: PipelineContext | None = None, _depth: int = 0) -> AsyncIterator[str]:
         tools = await self._mcp.get_tools()
         tools.extend(self._get_synthetic_tools())
-        kwargs = {"tools": tools}
 
         stream_response = await self._client.chat.completions.create(
             model=settings.lm_studio_model,
@@ -136,15 +141,16 @@ class LMStudioAdapter(LLMAdapter):
             max_tokens=settings.lm_studio_max_tokens,
             temperature=settings.lm_studio_temperature,
             stream=True,
-            **kwargs
+            tools=tools,
         )
-        
+
         tool_calls_buffer = {}
+        text_yielded = False
 
         async for chunk in stream_response:
             if chunk.choices and chunk.choices[0].delta:
                 delta = chunk.choices[0].delta
-                
+
                 if hasattr(delta, "tool_calls") and delta.tool_calls:
                     for tc in delta.tool_calls:
                         idx = tc.index
@@ -162,11 +168,12 @@ class LMStudioAdapter(LLMAdapter):
                 elif delta.content and not tool_calls_buffer:
                     # Only yield normal content if we aren't currently capturing a tool call
                     yield delta.content
+                    text_yielded = True
 
         if tool_calls_buffer:
             messages.append(Message(
-                role="assistant", 
-                content="", 
+                role="assistant",
+                content="",
                 tool_calls=[{
                     "id": tc["id"],
                     "type": "function",
@@ -174,36 +181,40 @@ class LMStudioAdapter(LLMAdapter):
                 } for tc in tool_calls_buffer.values()]
             ))
 
+            has_mcp_call = False
+
             for tc in tool_calls_buffer.values():
                 fn_name = tc["name"]
                 try:
                     fn_args = json.loads(tc["arguments"])
                 except Exception:
                     fn_args = {}
-                
-                # Intercept Synthetic UI Side-Effects
+
                 if fn_name == "generate_image":
                     if ctx: ctx.pending_image_prompt = fn_args.get("prompt")
-                    result_text = "Image queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "generate_music":
                     if ctx: ctx.pending_music_prompt = fn_args.get("prompt")
-                    result_text = "Music queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "plot_function":
                     if ctx: ctx.pending_plot_code = fn_args.get("python_code")
-                    result_text = "Plot queued for UI rendering."
+                    result_text = "ok"
                 elif fn_name == "speak":
                     if ctx: ctx.pending_speak_text = fn_args.get("word")
-                    result_text = "Word queued for pronunciation."
+                    result_text = "ok"
                 else:
-                    # Execute remote MCP Subject Matter Tools
                     result_text = await self._mcp.call_tool(fn_name, fn_args)
-                
-                messages.append(Message(
-                    role="tool", 
-                    content=str(result_text),
-                    tool_call_id=tc["id"]
-                ))
-            
-            # Recurse the stream with the populated tool contexts
-            async for next_chunk in self.stream(messages, ctx):
-                yield next_chunk
+                    has_mcp_call = True
+
+                messages.append(Message(role="tool", content=result_text, tool_call_id=tc["id"]))
+
+            # Recurse when:
+            # (a) MCP tools returned data the LLM needs to synthesise, OR
+            # (b) The model emitted only tool calls with no text — recurse to get the explanation.
+            #     Empty synthetic results prevent an "Okay, I've done it" acknowledgement.
+            should_recurse = has_mcp_call or not text_yielded
+            if should_recurse and _depth < MAX_TOOL_ROUNDS:
+                async for next_chunk in self.stream(messages, ctx, _depth + 1):
+                    yield next_chunk
+            elif should_recurse:
+                logger.warning("Tool-call depth limit (%d) reached in stream — returning partial response", MAX_TOOL_ROUNDS)

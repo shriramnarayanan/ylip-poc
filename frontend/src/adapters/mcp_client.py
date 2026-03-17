@@ -64,6 +64,10 @@ class MCPSubjectMatterClient:
                 for content in result.content:
                     if content.type == "text":
                         texts.append(content.text)
-                return "\n".join(texts)
+                text = "\n".join(texts).strip()
+                # Treat empty or bare empty-list responses as no results
+                if not text or text == "[]":
+                    return f"No results found for {name}({arguments}). Answer from your own knowledge."
+                return text
         except Exception as e:
             return f"Error executing tool {name}: {e}"

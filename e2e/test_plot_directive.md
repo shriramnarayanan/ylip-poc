@@ -20,7 +20,7 @@ The student asks the tutor to explain and plot a mathematical function.
 |---|---------------|----------|
 | 1 | Chatbot assistant message | Non-empty text describing Gaussian distribution |
 | 2 | Generated image gallery | Contains a rendered plot image |
-| 3 | Voice response audio | Present (TTS ran on the text portion) |
+| 3 | Voice response audio | Absent (Text mode TTS only fires for explicit speak() calls) |
 | 4 | Music audio | Absent (math topic should not trigger MUSIC:) |
 | 5 | Chatbot text | Does NOT contain raw `PLOT:`, `IMAGE:`, `MUSIC:` tokens |
 | 6 | Chatbot text | Does NOT contain a fenced python code block |
@@ -28,7 +28,8 @@ The student asks the tutor to explain and plot a mathematical function.
 ## Notes
 - The PLOT: directive and its code block must be stripped from the display text before rendering in the chatbot.
 - TTS must synthesize only the text description, not the Python code.
-- If the code execution backend is unreachable, the test fails at step 2 (expected image gallery).
+- `test_plot_image_rendered` is automatically skipped if the code execution backend is unreachable (checked via `GET http://localhost:8883/`).
+- `code_exec_enabled` defaults to `False` in config — must be explicitly enabled and the backend started for the plot test to run.
 
 ## Status
 - [x] Validated via Playwright MCP

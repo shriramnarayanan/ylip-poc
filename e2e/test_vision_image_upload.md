@@ -20,12 +20,13 @@ The student uploads a photo and asks the tutor to identify what is in it.
 |---|---------------|----------|
 | 1 | Chatbot assistant message | Non-empty text response identifying the animal |
 | 2 | Chatbot text | Does NOT contain raw `IMAGE:`, `MUSIC:`, `PLOT:` tokens |
-| 3a | If MUSIC: directive was emitted | Music audio present; Voice response audio absent |
-| 3b | If MUSIC: directive was NOT emitted | Voice response audio present |
+| 3 | Audio | Voice TTS and Music must not both be active simultaneously (mutually exclusive) |
 
 ## Notes
-- The LLM response is non-deterministic; MUSIC: may or may not appear.
-- When MUSIC: is present, the TTS pipeline must be skipped entirely — the audio output channels are mutually exclusive.
+- In Text mode, TTS only fires for explicit `speak()` calls and music only for `generate_music` calls.
+  A simple "What is this animal?" question may produce neither — the response is text-only.
+- The LLM response is non-deterministic; `generate_music` may or may not be called.
+- When music is generated, TTS must be skipped — the audio output channels are mutually exclusive.
 - The vision model receives the image as a base64-encoded PNG alongside the user text.
 
 ## Status

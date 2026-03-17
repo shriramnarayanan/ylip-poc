@@ -23,7 +23,7 @@ generated in this mode.
 |---|---------------|----------|
 | 1 | Chatbot assistant message | Non-empty text identifying the subject and/or style |
 | 2 | Chatbot text | Does NOT contain raw `IMAGE:`, `MUSIC:`, or `PLOT:` tokens |
-| 3 | Voice response audio | Present — TTS always runs in Conversation mode |
+| 3 | Voice response audio | TTS runs in Conversation mode, but audio is delivered as a `gr.update()` with no file path in the SSE stream — not detectable via REST API. Verified via non-empty chatbot text (TTS synthesises from it) as a proxy. |
 | 4 | Music audio | Absent — MUSIC: directive is excluded from the Conversation-mode system prompt |
 
 ## Out of scope
@@ -46,4 +46,5 @@ STT accuracy (correct transcription of the spoken prompt) is a unit concern for 
 - `gr.Audio(type="numpy")` does NOT accept base64 data URLs (unlike `gr.Image`). Audio must be uploaded via `POST /gradio_api/upload` to get a server-side path first.
 - The audio `FileData` object requires `"meta": {"_type": "gradio.FileData"}` (not `{}`); without it Gradio returns `event: error, data: null` immediately.
 - `ctx.text` in the orchestrator combines the image description and STT transcript: `[Image description: "..."]\n\n<stt text>`. The user chatbot message reflects this combined value.
-- All 4 pipeline checks (LLM response, no raw directives, TTS voice present, no music) are validated end-to-end via the Gradio REST API.
+- TTS audio in Conversation mode is delivered to the Gradio UI as `gr.update(value=(sr, arr))` mid-stream. In the SSE stream this appears as `{"__type__": "update"}` with no `path`, so `has_voice` is always `False` via REST API. The Python test uses non-empty chatbot text as a proxy instead.
+- All other 3 pipeline checks (LLM response, no raw directives, no music) are validated end-to-end via the Gradio REST API.

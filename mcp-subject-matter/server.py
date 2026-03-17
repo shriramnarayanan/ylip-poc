@@ -26,16 +26,19 @@ def _load(subject: str) -> SubjectDB:
         raise ValueError(f"Invalid subject name: {subject}")
 
     if not path.exists():
+        available = [p.stem for p in sorted(SUBJECTS_DIR.glob("*.db"))]
+        hint = f"Available subjects: {available}" if available else "No subjects are currently installed."
         raise FileNotFoundError(
-            f"No subject database '{subject}' found. "
-            f"Download it via the content manager or run scripts/create_sample_db.py."
+            f"No subject database '{subject}' found. {hint} "
+            f"Call list_subjects() to discover installed subjects."
         )
     return SubjectDB(path)
 
 
 @mcp.tool()
 def list_subjects() -> list[dict]:
-    """List all subject databases currently installed on this device."""
+    """List available curriculum subject databases.
+    Available subjects change over time."""
     results = []
     for db_path in sorted(SUBJECTS_DIR.glob("*.db")):
         db = SubjectDB(db_path)
@@ -51,43 +54,56 @@ def list_topics(subject: str) -> list[str]:
     return _load(subject).topics()
 
 
-@mcp.tool()
-def search(query: str, subject: str | None = None, n: int = 5) -> list[dict]:
-    """
-    Search curriculum content using hybrid semantic + keyword search
-    (sqlite-vec ANN + FTS5, fused with Reciprocal Rank Fusion).
+MIN_RELEVANCE = 0.45  # conservative threshold — only clearly on-topic results pass
 
-    If subject is omitted, searches across all installed subjects and returns
-    the top n results overall.
-    """
-    dbs = [_load(subject)] if subject else [SubjectDB(p) for p in sorted(SUBJECTS_DIR.glob("*.db"))]
+
+@mcp.tool()
+def search(query: str, subject: str | None = None, n: int = 10) -> list[dict]:
+    """Search curriculum content using hybrid semantic + keyword search.
+    Each result includes a relevance score (0.0–1.0). Only results above a
+    minimum similarity threshold are returned. Use your judgment: if the content
+    is directly relevant to the student's question, use it; otherwise ignore it
+    and answer from your own knowledge.
+    If subject is omitted, searches across all installed subjects."""
+    dbs = (
+        [_load(subject)] if subject
+        else [SubjectDB(p) for p in sorted(SUBJECTS_DIR.glob("*.db"))]
+    )
 
     query_vec = _embed(query)
 
-    results: list[dict] = []
+    # Gather more candidates than n so thresholding has a wider pool
+    candidates: list[dict] = []
     for db in dbs:
-        results.extend(hybrid_search(db, query, n, query_vec=query_vec))
+        candidates.extend(hybrid_search(db, query, n * 3, query_vec=query_vec))
 
-    if len(dbs) > 1 and results:
-        # Cross-database re-ranking via global vector similarity
-        texts = [f"{r.get('heading') or ''} {r['content']}" for r in results]
-        cand_vecs = _embedder().encode(texts, normalize_embeddings=True).astype(np.float32)
-        similarities = np.dot(cand_vecs, query_vec)
-        for i, r in enumerate(results):
-            r["global_score"] = float(similarities[i])
-        results.sort(key=lambda x: x["global_score"], reverse=True)
-    else:
-        results.sort(key=lambda x: x["score"], reverse=True)
+    if not candidates:
+        return []
 
+    # Compute cosine similarity for every candidate
+    texts = [f"{r.get('heading') or ''} {r['content']}" for r in candidates]
+    cand_vecs = _embedder().encode(texts, normalize_embeddings=True).astype(np.float32)
+    similarities = np.dot(cand_vecs, query_vec)
+
+    results = []
+    for i, r in enumerate(candidates):
+        sim = float(similarities[i])
+        if sim < MIN_RELEVANCE:
+            continue
+        r["relevance"] = round(sim, 4)
+        r.pop("score", None)
+        r.pop("global_score", None)
+        results.append(r)
+
+    results.sort(key=lambda x: x["relevance"], reverse=True)
     return results[:n]
 
 
 @mcp.tool()
 def get_structured(subject: str, category: str | None = None) -> list[dict]:
-    """
-    Retrieve structured entries from a subject database: exercises, drills, music
+    """Retrieve structured entries from a subject database: exercises, drills, music
     pieces, sport rules, etc. Optionally filter by category.
-    """
+    The subject must be an exact name from list_subjects() — call that first if unsure."""
     return _load(subject).structured(category)
 
 

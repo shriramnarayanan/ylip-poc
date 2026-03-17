@@ -98,5 +98,7 @@ def test_mcp_topic_details_in_response(mcp_result):
     )
 
 
-def test_voice_audio_present(mcp_result):
-    assert mcp_result["has_voice"], "Expected voice TTS audio for the response"
+def test_voice_audio_absent(mcp_result):
+    """In Text mode, TTS only fires for explicit speak() calls.
+    A push-up form question does not trigger speak(), so no audio is expected."""
+    assert not mcp_result["has_voice"], "No TTS audio expected in Text mode for a non-speak prompt"
