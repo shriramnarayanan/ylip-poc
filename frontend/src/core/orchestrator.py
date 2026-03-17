@@ -43,6 +43,7 @@ class Orchestrator:
         self._vision = None
         self._code_exec = None
         self._music_gen = None
+        self._student_state = None
 
     # ------------------------------------------------------------------ #
     # Lazy adapter init                                                    #
@@ -89,6 +90,13 @@ class Orchestrator:
             from adapters.music_gen import MusicGenAdapter
             self._music_gen = MusicGenAdapter()
         return self._music_gen
+
+    @property
+    def student_state(self):
+        if self._student_state is None and settings.student_state_enabled:
+            from adapters.student_state import StudentStateAdapter
+            self._student_state = StudentStateAdapter()
+        return self._student_state
 
     # ------------------------------------------------------------------ #
     # Pipeline step functions                                              #
@@ -197,6 +205,11 @@ class Orchestrator:
         if image_bytes and self.vision:
             desc = await self.vision.describe(image_bytes, text or "Describe this image.")
             text = f"[Image description: {desc}]\n\n{text or ''}"
+
+        if self.student_state:
+            student_ctx = await self.student_state.get_context()
+            if student_ctx:
+                system_prompt = f"{system_prompt}\n\n{student_ctx}"
 
         messages = session.to_messages(system_prompt) + [Message(role="user", content=text)]
         ctx = PipelineContext(text=text, image_bytes=image_bytes, history=messages, llm_response="")
@@ -328,6 +341,15 @@ class Orchestrator:
                 except Exception:
                     pass
                 music_task = None
+
+            # Fire-and-forget: record student interaction asynchronously.
+            if ctx.pending_interaction and self.student_state:
+                asyncio.create_task(
+                    self.student_state.record(
+                        session_id=session.session_id,
+                        **ctx.pending_interaction,
+                    )
+                )
 
             yield ctx
 

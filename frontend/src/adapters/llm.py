@@ -74,6 +74,41 @@ class LMStudioAdapter(LLMAdapter):
                     "description": "Sound out a word or short phrase aloud when the student asks how to pronounce it.",
                     "parameters": {"type": "object", "properties": {"word": {"type": "string"}}, "required": ["word"]}
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "record_interaction",
+                    "description": (
+                        "Rate the student's demonstrated understanding AFTER you have finished responding. "
+                        "Call this once per turn when the student gave an answer or showed their thinking. "
+                        "Skip for media-only requests (draw, plot, play music, show me X). "
+                        "Rate the STUDENT's knowledge — not the topic difficulty."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {
+                                "type": "string",
+                                "description": "Concept path, e.g. 'mathematics/gaussian_distribution' or 'music/intervals'"
+                            },
+                            "mastery_signal": {
+                                "type": "integer",
+                                "description": "0=confused, 1=misconception, 2=partial, 3=mostly correct, 4=fully mastered; -1 if student only asked a question"
+                            },
+                            "approach": {
+                                "type": "string",
+                                "enum": ["answered", "questioned", "struggled", "demonstrated"],
+                                "description": "How the student engaged this turn"
+                            },
+                            "notes": {
+                                "type": "string",
+                                "description": "Brief observation (≤100 chars), e.g. 'confuses σ with σ²'"
+                            }
+                        },
+                        "required": ["topic", "mastery_signal", "approach"]
+                    }
+                }
             }
         ]
 
@@ -111,6 +146,9 @@ class LMStudioAdapter(LLMAdapter):
                     result_text = "ok"
                 elif fn_name == "speak":
                     if ctx: ctx.pending_speak_text = fn_args.get("word")
+                    result_text = "ok"
+                elif fn_name == "record_interaction":
+                    if ctx: ctx.pending_interaction = fn_args
                     result_text = "ok"
                 else:
                     result_text = await self._mcp.call_tool(fn_name, fn_args)
@@ -201,6 +239,9 @@ class LMStudioAdapter(LLMAdapter):
                     result_text = "ok"
                 elif fn_name == "speak":
                     if ctx: ctx.pending_speak_text = fn_args.get("word")
+                    result_text = "ok"
+                elif fn_name == "record_interaction":
+                    if ctx: ctx.pending_interaction = fn_args
                     result_text = "ok"
                 else:
                     result_text = await self._mcp.call_tool(fn_name, fn_args)

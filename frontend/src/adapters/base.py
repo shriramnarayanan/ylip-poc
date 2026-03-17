@@ -28,6 +28,8 @@ class PipelineContext:
     pending_music_prompt: str | None = None
     pending_plot_code: str | None = None
     pending_speak_text: str | None = None
+    # Set by the record_interaction synthetic tool; consumed by the orchestrator.
+    pending_interaction: dict | None = None
 
 
 class LLMAdapter(ABC):
